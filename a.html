@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rapid Voice Mark Sheet</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -34,9 +32,7 @@
         }
     </script>
     <style>
-        body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-        }
+        body { font-family: 'Inter', sans-serif; }
         [data-view] { display: none; }
         [data-view].visible { display: block; }
         .q-box {
@@ -50,10 +46,6 @@
         }
         .q-box.error-flash {
             animation: error-flash 0.5s ease-in-out 2;
-        }
-        /* Prevent zoom on iOS */
-        input[type="file"] {
-            font-size: 16px;
         }
     </style>
 </head>
@@ -185,7 +177,6 @@
     </div>
 
     <script>
-        // Application State
         let studentQueue = [];
         let questionHeaders = [];
         let maxMarks = [];
@@ -200,14 +191,12 @@
         let isListening = false;
         let micWasManuallyStopped = false;
 
-        // Word to number mapping
         const wordToNumber = {
             'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
             'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
             'to': 2, 'tree': 3, 'for': 4, 'too': 2, 'fore': 4, 'ate': 8,
         };
 
-        // DOM Elements
         const views = document.querySelectorAll('[data-view]');
         const processButton = document.getElementById('process-button');
         const fileInput = document.getElementById('file-upload');
@@ -236,14 +225,12 @@
         const errorMessage = document.getElementById('error-message');
         const closeModalButton = document.getElementById('close-modal-button');
 
-        // View Management
         function showView(viewName) {
             views.forEach(view => {
                 view.classList.toggle('visible', view.dataset.view === viewName);
             });
         }
 
-        // Error Handling
         function showError(message) {
             console.error(message);
             errorMessage.textContent = message;
@@ -258,7 +245,6 @@
             }
         }
 
-        // Speech Recognition Setup
         function setupSpeechRecognition() {
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
@@ -351,7 +337,6 @@
             }
         }
         
-        // File Processing
         function handleProcessFile() {
             const file = fileInput.files[0];
             if (!file) return;
@@ -459,7 +444,6 @@
             reader.readAsArrayBuffer(file);
         }
         
-        // UI Updates
         function setupQuestionGrid() {
             questionGrid.innerHTML = '';
             questionHeaders.forEach((qNum, index) => {
@@ -515,22 +499,24 @@
             }
         }
         
-        // Speech Processing
         function processTranscript(transcript) {
             lastHeard.textContent = `"${transcript}"`;
             
             let commandProcessed = false;
             
+            // Check for "yes" or "next" to confirm moving to next student
             if (transcript === 'yes' || transcript === 'yeah' || transcript === 'yep' || transcript === 'next') {
                 if (currentQuestionIndex >= questionHeaders.length) {
                     goToNextStudent();
                     commandProcessed = true;
                 } else if (transcript === 'next') {
+                    // Allow "next" to move to next student even if not all questions filled
                     goToNextStudent();
                     commandProcessed = true;
                 }
             } else if (transcript === 'no' || transcript === 'nope') {
                 if (currentQuestionIndex >= questionHeaders.length) {
+                    // Go back to first question of current student
                     highlightQuestion(0);
                     statusText.textContent = `Back to Q1. Ready for marks.`;
                     commandProcessed = true;
@@ -542,6 +528,7 @@
                 goToPrevStudent();
                 commandProcessed = true;
             } else if (transcript === 'clear' || transcript === 'remove' || transcript === 'reset') {
+                // Clear all marks for current student
                 studentQueue[currentStudentIndex].marks = Array(questionHeaders.length).fill('');
                 updateQuestionGrid();
                 highlightQuestion(0);
@@ -553,14 +540,17 @@
                 return;
             }
 
+            // Extract all digits from the transcript
             const allDigits = [];
-            const words = transcript.split(/\s+/);
+            const words = transcript.split(/\s+/); // Split by spaces
             
             words.forEach(word => {
+                // Try word-to-number conversion first
                 let num = wordToNumber[word];
                 if (num !== undefined) {
                     allDigits.push(num);
                 } else {
+                    // Extract digits from the word
                     const digits = word.match(/\d/g);
                     if (digits) {
                         digits.forEach(d => allDigits.push(parseInt(d)));
@@ -573,6 +563,7 @@
                 return;
             }
 
+            // Process all digits and fill questions
             let questionIdx = currentQuestionIndex;
             let invalidFound = false;
             let digitsProcessed = 0;
@@ -597,13 +588,16 @@
                 return;
             }
             
+            // Update the grid and current position
             updateQuestionGrid();
             
             if (questionIdx >= questionHeaders.length) {
+                // All questions filled
                 currentQuestionIndex = questionHeaders.length;
-                highlightQuestion(questionHeaders.length - 1);
+                highlightQuestion(questionHeaders.length - 1); // Highlight last question
                 statusText.textContent = `All ${questionHeaders.length} marks entered! Say "yes" for next student or "no" to review.`;
             } else {
+                // Partially filled, update position
                 currentQuestionIndex = questionIdx;
                 highlightQuestion(currentQuestionIndex);
                 const remaining = questionHeaders.length - questionIdx;
@@ -611,7 +605,11 @@
             }
         }
 
-        // Navigation
+        function setMarkForCurrentQuestion(mark) {
+            studentQueue[currentStudentIndex].marks[currentQuestionIndex] = mark;
+            updateQuestionGrid();
+        }
+
         function goToNextQuestion() {
             if (currentQuestionIndex < questionHeaders.length - 1) {
                 highlightQuestion(currentQuestionIndex + 1);
@@ -637,7 +635,6 @@
             }
         }
         
-        // Completion
         function showCompletionScreen() {
             if(isListening) {
                 micWasManuallyStopped = true;
@@ -669,7 +666,6 @@
             });
         }
         
-        // Export Functions
         function downloadCSV() {
             const headers = ["RollNo", "StudentName", ...questionHeaders.map(q => `Q${q}`), "Total"].join(',');
             
@@ -696,13 +692,17 @@
         
         function downloadExcel() {
             try {
+                // Create workbook and worksheet
                 const wb = XLSX.utils.book_new();
                 
+                // Prepare data for Excel
                 const excelData = [];
                 
+                // Add headers
                 const headers = ["Roll No", "Student Name", ...questionHeaders.map(q => `Q${q}`), "Total"];
                 excelData.push(headers);
                 
+                // Add student data
                 studentQueue.forEach(student => {
                     let total = 0;
                     const marks = student.marks.map(mark => {
@@ -714,18 +714,22 @@
                     excelData.push([student.rollNo, student.studentName, ...marks, total]);
                 });
                 
+                // Create worksheet from data
                 const ws = XLSX.utils.aoa_to_sheet(excelData);
                 
+                // Set column widths
                 const colWidths = [
-                    { wch: 10 },
-                    { wch: 25 },
-                    ...questionHeaders.map(() => ({ wch: 8 })),
-                    { wch: 10 }
+                    { wch: 10 },  // Roll No
+                    { wch: 25 },  // Student Name
+                    ...questionHeaders.map(() => ({ wch: 8 })), // Questions
+                    { wch: 10 }   // Total
                 ];
                 ws['!cols'] = colWidths;
                 
+                // Add worksheet to workbook
                 XLSX.utils.book_append_sheet(wb, ws, "Marks");
                 
+                // Generate Excel file and trigger download
                 XLSX.writeFile(wb, "student_marks_entry.xlsx");
                 
                 console.log("Excel file generated successfully");
@@ -745,48 +749,31 @@
             showView('upload');
         }
 
-        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            // Wait for XLSX library to load
-            const initApp = () => {
-                if (typeof XLSX === 'undefined') {
-                    console.log('Waiting for XLSX library to load...');
-                    setTimeout(initApp, 100);
-                    return;
-                }
-                
-                console.log('XLSX library loaded successfully');
-                
-                if (!setupSpeechRecognition()) {
-                    return;
-                }
+            if (!setupSpeechRecognition()) {
+                return;
+            }
 
-                fileInput.addEventListener('change', () => {
-                    processButton.disabled = !fileInput.files[0];
-                });
-                
-                processButton.addEventListener('click', handleProcessFile);
-                micButton.addEventListener('click', toggleListening);
-                
-                prevStudentBtn.addEventListener('click', goToPrevStudent);
-                nextStudentBtn.addEventListener('click', goToNextStudent);
-                prevQBtn.addEventListener('click', goToPrevQuestion);
-                nextQBtn.addEventListener('click', goToNextQuestion);
-                
-                downloadCsvButton.addEventListener('click', downloadCSV);
-                downloadExcelButton.addEventListener('click', downloadExcel);
-                startOverButton.addEventListener('click', startOver);
-                closeModalButton.addEventListener('click', () => {
-                    errorModal.style.display = 'none';
-                });
-            };
+            fileInput.addEventListener('change', () => {
+                processButton.disabled = !fileInput.files[0];
+            });
             
-            initApp();
+            processButton.addEventListener('click', handleProcessFile);
+            micButton.addEventListener('click', toggleListening);
+            
+            prevStudentBtn.addEventListener('click', goToPrevStudent);
+            nextStudentBtn.addEventListener('click', goToNextStudent);
+            prevQBtn.addEventListener('click', goToPrevQuestion);
+            nextQBtn.addEventListener('click', goToNextQuestion);
+            
+            downloadCsvButton.addEventListener('click', downloadCSV);
+            downloadExcelButton.addEventListener('click', downloadExcel);
+            startOverButton.addEventListener('click', startOver);
+            closeModalButton.addEventListener('click', () => {
+                errorModal.style.display = 'none';
+            });
         });
 
     </script>
-    
-    <!-- Load XLSX library at the end -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </body>
 </html>
